@@ -1,0 +1,8 @@
+{
+  "name": "错题扫码分析专家 (SmartStudy AI)",
+  "description": "基于AI的错题分析工具，通过摄像头扫描错题，结合中国教材资源库（ChinaTextbook）进行深度分析，精准定位知识薄弱点并生成针对性练习。",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
