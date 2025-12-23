@@ -4,7 +4,6 @@ import { ProblemAnalysis, ComparisonResult, PracticeQuestion } from "../types";
 
 /**
  * 绘图指令优化：不仅保留标识，还需体现物理参数（如比例关系）
- * 策略：在提示词中加入具体的几何尺寸描述，模拟物理建模过程
  */
 const generateDiagram = async (description: string, type: 'magic_square' | 'geometry' | 'physics' | 'general'): Promise<string | undefined> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -114,28 +113,66 @@ export const analyzeImage = async (images: string[]): Promise<ProblemAnalysis> =
   return result;
 };
 
+/**
+ * 逻辑诊断逻辑：增加回退机制
+ */
 export const compareSteps = async (problem: ProblemAnalysis, userSteps: string): Promise<ComparisonResult> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: `题目：${problem.originalText}\n标准答案：${problem.finalAnswer}\n学生思路：${userSteps}\n请分析学生是否正确计算了容器截面积之比（半径平方比），以及是否考虑了连通管高度限制。`,
-    config: {
-      systemInstruction: "你是一位物理老师。请用简体中文进行严密的逻辑分析。指出学生在处理比例关系或物理过程分段（水流前/水流后）时的错误。禁止使用 ** 加粗。"
+  const prompt = `题目：${problem.originalText}\n标准答案：${problem.finalAnswer}\n学生思路：${userSteps}\n请分析学生是否正确计算了容器截面积之比（半径平方比），以及是否考虑了连通管高度限制。`;
+  const systemInstruction = "你是一位物理老师。请用简体中文进行严密的逻辑分析。指出学生在处理比例关系或物理过程分段（水流前/水流后）时的错误。禁止使用 ** 加粗。";
+
+  try {
+    // 优先尝试 Pro 模型
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: prompt,
+      config: { systemInstruction }
+    });
+    return {
+      userStepsAnalysis: response.text || "未能生成分析。",
+      discrepancies: [],
+      weakPoints: problem.keyKnowledgePoints
+    };
+  } catch (err: any) {
+    console.warn("Gemini 3 Pro 诊断失败，正在尝试 Flash 模型回退...", err);
+    // 检查是否是由于 API Key 导致的问题
+    if (err.message?.includes("Requested entity was not found") || err.message?.includes("404")) {
+      throw new Error("PRO_MODEL_NOT_FOUND");
     }
-  });
-  return {
-    userStepsAnalysis: response.text || "分析生成中...",
-    discrepancies: [],
-    weakPoints: problem.keyKnowledgePoints
-  };
+    
+    // 回退到 Flash 模型
+    try {
+      const responseFlash = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: { systemInstruction }
+      });
+      return {
+        userStepsAnalysis: responseFlash.text || "诊断生成异常。",
+        discrepancies: [],
+        weakPoints: problem.keyKnowledgePoints
+      };
+    } catch (e2) {
+      console.error("所有诊断尝试均失败", e2);
+      throw e2;
+    }
+  }
 };
 
 export const generatePractice = async (weakPoints: string[], problem: ProblemAnalysis): Promise<PracticeQuestion[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `生成3道涉及“连通器原理”和“截面积变化”的变式题。类型：${problem.problemType}。请确保物理情境多样化。`,
+    contents: `基于知识点：${weakPoints.join(',')}，生成3道考察“连通器原理”、“底面积比例”或“动态液面平衡”的变式题。类型必须是：${problem.problemType}。`,
     config: {
+      systemInstruction: `你现在是一位负责任的名师。生成的练习题解析必须极度详尽，包括：
+1. **解题突破口**：指出题目中最核心的物理模型（如：液面在达到管道高度前的独立性）。
+2. **分步详析**：
+   - 步骤1：列出初始参数（底面积比 S甲:S乙:S丙 = R甲²:R乙²:R丙²）。
+   - 步骤2：分析液面上升的临界状态（如：液面何时开始流向其他容器）。
+   - 步骤3：计算最终量化关系。
+3. **陷阱警示**：提醒学生不要忽视半径与面积的平方比关系。
+4. **注意**：solution 数组的每一项都应该是一个完整的逻辑段落。`,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.ARRAY,
