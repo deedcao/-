@@ -12,7 +12,8 @@ export interface ComparisonResult {
   userStepsAnalysis: string;
   discrepancies: string[];
   weakPoints: string[];
-  textbookReference: {
+  groundingUrls?: { title: string; uri: string }[];
+  textbookReference?: {
     textbook: string;
     chapter: string;
     section: string;

@@ -3,29 +3,35 @@ import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ProblemAnalysis, ComparisonResult, PracticeQuestion } from "../types";
 
 /**
- * 图像识别逻辑 - 保持纯净文本
+ * 图像识别逻辑 - 支持多张图片并行识别与整合
  */
-export const analyzeImage = async (base64Image: string): Promise<ProblemAnalysis> => {
+export const analyzeImage = async (images: string[]): Promise<ProblemAnalysis> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
+  // 构建多部分内容，包括所有图片和提示词
+  const imageParts = images.map(base64 => ({
+    inlineData: { data: base64, mimeType: 'image/jpeg' }
+  }));
+
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: {
       parts: [
-        { inlineData: { data: base64Image, mimeType: 'image/jpeg' } },
-        { text: "请精准识别图片中的题目并提供分步解答。注意：禁止使用 $ 符号或 Markdown 数学定界符。使用易读的文本表达。" }
+        ...imageParts,
+        { text: "以上是一道题目的多张拆解图片。请你识别所有图片内容，分析它们之间的逻辑关系（如：图1是题干，图2是配图），并将它们整合为一道完整的题目进行分步解答。注意：禁止使用 $ 符号或 Markdown 数学定界符。使用易读的文本表达。" }
       ]
     },
     config: {
-      systemInstruction: `你是一位教育专家。
-1. **识别题目**：禁止使用 $ 符号包裹变量。
-2. **结构化解答**：提供标准步骤。
-3. **输出格式**：JSON。禁止在字段内使用 ** 等 Markdown 加粗格式。`,
+      systemInstruction: `你是一位全能教育专家。
+1. **多图合成**：你需要将多张图片中的文字和图像信息合成为一个连贯的题目描述。
+2. **规范输出**：禁止使用 $ 符号包裹变量。
+3. **结构化解答**：提供标准步骤。
+4. **输出格式**：严格执行 JSON。禁止在字段内使用 ** 等 Markdown 加粗格式。`,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          originalText: { type: Type.STRING },
+          originalText: { type: Type.STRING, description: "整合后的完整题目文本描述" },
           subject: { type: Type.STRING },
           grade: { type: Type.STRING },
           standardSolution: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -40,12 +46,12 @@ export const analyzeImage = async (base64Image: string): Promise<ProblemAnalysis
   try {
     return JSON.parse(response.text || '{}');
   } catch (e) {
-    throw new Error("识别解析失败，请确保图片清晰且光线充足。");
+    throw new Error("多图识别解析失败，请确保图片清晰且内容完整。");
   }
 };
 
 /**
- * 差异化思路分析逻辑 - 强制要求真实 URL，禁止虚构协议
+ * 差异化思路分析逻辑 - 使用 Google Search 寻找参考链接
  */
 export const compareSteps = async (
   problem: ProblemAnalysis,
@@ -53,48 +59,47 @@ export const compareSteps = async (
 ): Promise<ComparisonResult> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
+  // 重要：使用 googleSearch 时，建议不要强制 JSON 输出，且必须手动提取 groundingChunks
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: `
       【题目】：${problem.originalText}
       【标准解法】：${problem.standardSolution.join(' -> ')}
       【学生思路】：${userSteps}
-      请比对并指出盲区。
-      **特别要求：必须通过 Google Search 寻找一个关于该题目知识点的真实、可直接打开的 HTTPS 链接。**
+      请比对学生解题思路与标准解法的差异，并给出诊断分析。
+      要求：
+      1. 分析学生在逻辑上的偏差或盲区。
+      2. 指出需要巩固的知识点。
+      3. 必须通过 Google Search 寻找一个关于该题目知识点的真实、可直接打开的 HTTPS 链接。
     `,
     config: {
       thinkingConfig: { thinkingBudget: 4000 },
       tools: [{googleSearch: {}}],
-      systemInstruction: `你是一位资深教师。请诊断学生错误并提供教材参考。
-1. **禁止虚构协议**：绝对禁止返回以 "textbook://" 或其他非标准协议开头的链接。
-2. **强制标准协议**：返回的 uri 必须以 "https://" 开头，且必须能在普通浏览器中直接打开。
-3. **搜索优先级**：优先链接至国家中小学智慧教育平台(zxx.edu.cn)的具体课程页面；如果找不到，请链接至该知识点对应的“百度百科”或“维基百科”词条。
-4. **禁止加粗**：不要使用 ** 符号。`,
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          userStepsAnalysis: { type: Type.STRING },
-          discrepancies: { type: Type.ARRAY, items: { type: Type.STRING } },
-          weakPoints: { type: Type.ARRAY, items: { type: Type.STRING } },
-          textbookReference: {
-            type: Type.OBJECT,
-            properties: {
-              textbook: { type: Type.STRING },
-              chapter: { type: Type.STRING },
-              section: { type: Type.STRING },
-              path: { type: Type.STRING },
-              uri: { type: Type.STRING, description: "必须是以 https:// 开头的真实有效网址" }
-            },
-            required: ["textbook", "chapter", "section", "path", "uri"]
-          }
-        },
-        required: ["userStepsAnalysis", "discrepancies", "weakPoints", "textbookReference"]
-      }
+      systemInstruction: "你是一位资深教师。请诊断学生错误并提供教材参考。返回结果必须包含文字分析和建议。参考链接必须为 HTTPS 协议，优先链接至国家中小学智慧教育平台(zxx.edu.cn)；其次百度百科。不要使用 ** 符号加粗文本。"
     }
   });
 
-  return JSON.parse(response.text || '{}');
+  // 提取 groundingChunks 中的 URL
+  const groundingUrls: { title: string; uri: string }[] = [];
+  const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+  if (chunks) {
+    chunks.forEach((chunk: any) => {
+      if (chunk.web && chunk.web.uri) {
+        groundingUrls.push({
+          title: chunk.web.title || "相关学习链接",
+          uri: chunk.web.uri
+        });
+      }
+    });
+  }
+
+  // 由于不使用 JSON 模式（遵循 googleSearch 规则），将文本整体作为分析结果
+  return {
+    userStepsAnalysis: response.text || "未能生成详细分析",
+    discrepancies: ["请查看下方的详细文字诊断"],
+    weakPoints: problem.keyKnowledgePoints,
+    groundingUrls: groundingUrls
+  };
 };
 
 /**
