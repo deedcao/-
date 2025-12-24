@@ -6,10 +6,11 @@ export interface ProblemAnalysis {
   standardSolution: string[];
   finalAnswer: string;
   keyKnowledgePoints: string[];
-  // Fix: added problemType to match usage in services/gemini.ts (line 123)
   problemType: string;
-  diagram?: string; // Base64 image data
-  gridData?: (string | null)[][]; // 3x3 grid data for perfect rendering
+  diagram?: string; // AI 生成的图（仅用于变式练习）
+  sourceImage?: string; // 题目原图（用户拍摄）
+  diagramDescription?: string;
+  gridData?: (string | null)[][];
 }
 
 export interface ComparisonResult {
@@ -24,7 +25,6 @@ export interface PracticeQuestion {
   solution: string[];
   answer: string;
   difficulty: '基础' | '中等' | '困难';
-  // Fix: added problemType to match usage in services/gemini.ts (line 150)
   problemType?: string;
   diagram?: string;
   gridData?: (string | null)[][];
