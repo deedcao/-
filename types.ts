@@ -1,4 +1,6 @@
 
+export type Subject = 'Auto' | 'Mathematics' | 'Physics' | 'Chemistry' | 'Biology' | 'English';
+
 export interface ProblemAnalysis {
   originalText: string;
   subject: string;
@@ -30,4 +32,9 @@ export interface PracticeQuestion {
   gridData?: (string | null)[][];
 }
 
-export type AppStage = 'START' | 'SCANNING' | 'ANALYZING' | 'USER_INPUT' | 'COMPARISON' | 'PRACTICE';
+export interface FavoriteItem extends PracticeQuestion {
+  id: string;
+  favoritedAt: number;
+}
+
+export type AppStage = 'START' | 'SCANNING' | 'ANALYZING' | 'USER_INPUT' | 'COMPARISON' | 'PRACTICE' | 'FAVORITES';

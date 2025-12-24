@@ -1,26 +1,22 @@
 
 import { GoogleGenAI, Type, Modality, GenerateContentResponse } from "@google/genai";
-import { ProblemAnalysis, ComparisonResult, PracticeQuestion } from "../types";
+import { ProblemAnalysis, ComparisonResult, PracticeQuestion, Subject } from "../types";
 
 /**
  * 核心绘图重构生成器
- * @param prompt 绘图文字描述
- * @param sourceImageBase64 可选：原题参考图的 Base64 数据
- * @param correctionFeedback 可选：来自校验步骤的修正意见
  */
 const generateReconstructedDiagram = async (prompt: string, sourceImageBase64?: string, correctionFeedback?: string): Promise<string | undefined> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const instruction = `你是一位教材级别的专业几何绘图专家。
+  const instruction = `你是一位教材级别的专业几何绘图与科学图表专家。
   任务：根据提供的题目文本${sourceImageBase64 ? '和【原始参考图】' : ''}，绘制一张标准、清晰的数字化示意图。
   
   要求：
-  1. ${sourceImageBase64 ? '必须严格参考【原始参考图】中的构图布局和标注位置。' : '根据题目描述的几何逻辑进行严密构图。'}
-  2. 风格：白底黑线，简约矢量风格。
-  3. 标注：仅保留 A, B, C, O 等关键标识，严禁乱码。
-  ${correctionFeedback ? `4. 特别注意修正上个版本的错误：${correctionFeedback}` : ''}
+  1. 风格：白底黑线，简约矢量风格。
+  2. 标注：保留关键标识（如点、力 F、化学键等），严禁乱码。
+  ${correctionFeedback ? `3. 修正建议：${correctionFeedback}` : ''}
   
-  题目内容：${prompt}`;
+  内容：${prompt}`;
 
   const parts: any[] = [{ text: instruction }];
   if (sourceImageBase64) {
@@ -48,7 +44,7 @@ const generateReconstructedDiagram = async (prompt: string, sourceImageBase64?: 
 };
 
 /**
- * 图像逻辑校验器：对比图片与题意是否吻合
+ * 图像逻辑校验器
  */
 const verifyDiagramAccuracy = async (question: string, diagramBase64: string): Promise<{ isAccurate: boolean; feedback: string }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -60,43 +56,47 @@ const verifyDiagramAccuracy = async (question: string, diagramBase64: string): P
       contents: {
         parts: [
           { inlineData: { data: base64Data, mimeType: 'image/png' } },
-          { text: `请作为几何老师校验这张图是否准确表达了以下题目的意思。
+          { text: `请校验这张图是否准确表达了题目意思。
           题目：${question}
-          校验点：
-          1. 字母标注位置是否正确？
-          2. 几何关系（垂直、平行、平分）是否在视觉上成立？
-          3. 是否存在乱码或模糊不清的地方？
-          请以 JSON 格式回复：{"isAccurate": boolean, "feedback": "如果不准确，请指出具体哪里错了"}` }
+          JSON格式回复：{"isAccurate": boolean, "feedback": "string"}` }
         ]
       },
       config: { responseMimeType: "application/json" }
     });
-    
     return JSON.parse(response.text || '{"isAccurate": true, "feedback": ""}');
   } catch (e) {
-    return { isAccurate: true, feedback: "" }; // 降级处理
+    return { isAccurate: true, feedback: "" };
   }
 };
 
 /**
- * 题目分析主逻辑
+ * 题目分析主逻辑：增加学科权重
  */
-export const analyzeImage = async (images: string[]): Promise<ProblemAnalysis> => {
+export const analyzeImage = async (images: string[], preferredSubject: Subject = 'Auto'): Promise<ProblemAnalysis> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const imageParts = images.map(base64 => ({
     inlineData: { data: base64, mimeType: 'image/jpeg' }
   }));
+
+  const subjectPrompt = preferredSubject === 'Auto' 
+    ? "请首先识别题目所属学科（数学、物理、化学、生物或英语）。"
+    : `本题已知学科为：${preferredSubject}，请专注于该领域的专业术语识别和逻辑分析。`;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: {
       parts: [
         ...imageParts,
-        { text: "请精准识别题目并分析其核心考点。特别关注几何图形的文字描述（diagramDescription）。" }
+        { text: `${subjectPrompt} 请精准识别题目，分析考点，并提供图解描述。` }
       ]
     },
     config: {
-      systemInstruction: "你是一位资深教师，擅长将模糊的题目照片重构为结构化的教学内容。",
+      systemInstruction: `你是一位全科特级教师。
+      1. 如果是数学题，侧重几何逻辑和计算步骤。
+      2. 如果是物理题，侧重受力分析、运动状态和物理模型。
+      3. 如果是化学题，确保化学方程式、结构式识别准确。
+      4. 如果是英语题，侧重语法点和语境分析。
+      5. 在 diagramDescription 中描述用于绘图重构的关键视觉信息。`,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -118,7 +118,6 @@ export const analyzeImage = async (images: string[]): Promise<ProblemAnalysis> =
   const result = JSON.parse(response.text || '{}');
   const originalImage = images[0];
   
-  // 初始绘制（结合原图和文字）
   result.diagram = await generateReconstructedDiagram(
     `${result.originalText}。补充绘图信息：${result.diagramDescription}`, 
     originalImage
@@ -132,8 +131,8 @@ export const compareSteps = async (problem: ProblemAnalysis, userSteps: string):
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `题目：${problem.originalText}\n标准答案：${problem.finalAnswer}\n学生思路：${userSteps}`,
-    config: { systemInstruction: "你是一位有耐心的导师，请分析学生的思路。" }
+    contents: `题目：${problem.originalText}\n标准答案：${problem.finalAnswer}\n学生思路：${userSteps}\n学科背景：${problem.subject}`,
+    config: { systemInstruction: `你是一位专业的${problem.subject}导师。请用专业视角分析学生的思路错误。` }
   });
   return {
     userStepsAnalysis: response.text || "解析生成失败。",
@@ -142,14 +141,11 @@ export const compareSteps = async (problem: ProblemAnalysis, userSteps: string):
   };
 };
 
-/**
- * 变式生成逻辑（包含“生成-校验-修正”闭环）
- */
 export const generatePractice = async (weakPoints: string[], problem: ProblemAnalysis): Promise<PracticeQuestion[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `基于知识点：${weakPoints.join(',')}，生成3道同类型练习题。`,
+    contents: `基于${problem.subject}学科的考点：${weakPoints.join(',')}，生成3道同类型练习题。`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -169,26 +165,17 @@ export const generatePractice = async (weakPoints: string[], problem: ProblemAna
 
   const questions: PracticeQuestion[] = JSON.parse(response.text || '[]');
   
-  // 对每道变式题执行重绘与闭环校验
   for (const q of questions) {
-    // 1. 初次绘图
     let diagram = await generateReconstructedDiagram(q.question);
-    
     if (diagram) {
-      // 2. AI 自动逻辑校验
       const check = await verifyDiagramAccuracy(q.question, diagram);
-      
-      // 3. 如果不准确，尝试携带反馈重绘一次
       if (!check.isAccurate) {
-        console.log(`变式题图形校验未通过: ${check.feedback}，正在重绘...`);
         const correctedDiagram = await generateReconstructedDiagram(q.question, undefined, check.feedback);
         if (correctedDiagram) diagram = correctedDiagram;
       }
     }
-    
     q.diagram = diagram;
   }
-  
   return questions;
 };
 
