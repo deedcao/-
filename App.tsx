@@ -192,28 +192,84 @@ const App: React.FC = () => {
     else if (stage === 'FAVORITES') setStage('START');
   };
 
+  const handleForward = () => {
+    if (stage === 'START' && problem) setStage('USER_INPUT');
+    else if (stage === 'USER_INPUT' && comparison) setStage('COMPARISON');
+    else if (stage === 'COMPARISON' && practice.length > 0) setStage('PRACTICE');
+  };
+
+  // 检查是否可以前进
+  const canGoForward = () => {
+    if (stage === 'START' && problem) return true;
+    if (stage === 'USER_INPUT' && comparison) return true;
+    if (stage === 'COMPARISON' && practice.length > 0) return true;
+    return false;
+  };
+
   const filteredFavorites = favorites.filter(f => favFilter === 'All' || f.problemType === favFilter);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-12 text-slate-900 font-sans selection:bg-blue-100">
-      <header className="bg-white/80 backdrop-blur-md border-b px-6 py-4 flex items-center justify-between sticky top-0 z-40 shadow-sm transition-all">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg cursor-pointer hover:rotate-6 transition-transform" onClick={reset}>
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+      {/* 增强型导航栏 */}
+      <header className="bg-white/90 backdrop-blur-lg border-b px-4 py-3 flex items-center justify-between sticky top-0 z-40 shadow-sm transition-all">
+        <div className="flex items-center gap-2">
+          {/* 返回按钮 */}
+          {stage !== 'START' && stage !== 'SCANNING' && (
+            <button 
+              onClick={handleBack} 
+              className="flex items-center gap-1 px-3 py-2 bg-slate-900 text-white rounded-xl hover:bg-slate-800 active:scale-95 transition-all shadow-md group"
+              title="返回上一级"
+            >
+              <svg className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7"></path></svg>
+              <span className="text-[10px] font-black uppercase tracking-wider hidden xs:block">返回</span>
+            </button>
+          )}
+
+          {/* 前进按钮 */}
+          {canGoForward() && stage !== 'SCANNING' && (
+            <button 
+              onClick={handleForward} 
+              className="flex items-center gap-1 px-3 py-2 bg-slate-900 text-white rounded-xl hover:bg-slate-800 active:scale-95 transition-all shadow-md group"
+              title="前进到下一级"
+            >
+              <span className="text-[10px] font-black uppercase tracking-wider hidden xs:block">前进</span>
+              <svg className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7"></path></svg>
+            </button>
+          )}
+          
+          {/* Logo 区域 */}
+          <div 
+            className={`flex items-center gap-2 px-2 py-1.5 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors`}
+            onClick={reset}
+          >
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-md">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+            </div>
+            <h1 className="text-sm font-black tracking-tight uppercase group hidden md:block">
+              SmartStudy <span className="text-blue-600">AI</span>
+            </h1>
           </div>
-          <h1 className="text-lg font-black tracking-tight uppercase group cursor-pointer" onClick={reset}>
-            SmartStudy <span className="text-blue-600">AI</span>
-          </h1>
         </div>
-        <div className="flex gap-2">
-           <button onClick={() => setStage('FAVORITES')} className="p-2 bg-pink-50 text-pink-600 rounded-lg hover:bg-pink-100 transition-colors relative group">
+
+        <div className="flex items-center gap-2">
+           <button onClick={() => setStage('FAVORITES')} className="p-2.5 bg-pink-50 text-pink-600 rounded-xl hover:bg-pink-100 transition-colors relative group border border-pink-100 shadow-sm">
              <svg className="w-5 h-5 group-hover:scale-110 transition-transform" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd"></path></svg>
-             {favorites.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-pink-500 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white animate-bounce">{favorites.length}</span>}
+             {favorites.length > 0 && (
+               <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-pink-600 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white font-bold shadow-sm">
+                 {favorites.length}
+               </span>
+             )}
            </button>
-           <button onClick={handleSelectKey} className={`p-2 rounded-lg transition-colors ${hasApiKey ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+           
+           <button onClick={handleSelectKey} className={`p-2.5 rounded-xl transition-all border shadow-sm ${hasApiKey ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-300 border-slate-100'}`}>
              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
            </button>
-           {stage !== 'START' && <button onClick={reset} className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-black shadow-md active:scale-95 transition-all">首页</button>}
+
+           {stage !== 'START' && (
+             <button onClick={reset} className="ml-1 px-4 py-2.5 bg-blue-50 text-blue-700 rounded-xl text-[10px] font-black shadow-sm active:scale-95 transition-all uppercase tracking-widest border border-blue-100">
+               重置
+             </button>
+           )}
         </div>
       </header>
 
@@ -358,7 +414,6 @@ const App: React.FC = () => {
                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
                  生成变式强化训练
                </button>
-               <button onClick={reset} className="w-full py-4 bg-white border-2 border-slate-100 text-slate-400 rounded-[2.5rem] font-black text-lg hover:bg-slate-50 transition-all">返回首页</button>
             </div>
           </div>
         )}
@@ -408,9 +463,6 @@ const App: React.FC = () => {
           <div className="space-y-8 pb-20 animate-in fade-in">
             <div className="flex items-center justify-between px-2">
               <div className="flex items-center gap-4">
-                <button onClick={handleBack} className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-slate-900 transition-colors">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7"></path></svg>
-                </button>
                 <h2 className="text-3xl font-black tracking-tight">我的“错题本”</h2>
               </div>
               <span className="text-xs font-black text-pink-500 bg-pink-50 px-3 py-1 rounded-full uppercase">共 {favorites.length} 题</span>
@@ -503,6 +555,9 @@ const App: React.FC = () => {
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @media (max-width: 400px) {
+          .xs\:block { display: none; }
+        }
       `}</style>
     </div>
   );
